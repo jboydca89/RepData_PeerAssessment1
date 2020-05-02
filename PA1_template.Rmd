@@ -5,21 +5,123 @@ output:
     keep_md: true
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
 
 ## Loading and preprocessing the data
 
+```{r}
+library(tidyverse)
+library(lubridate)
+```
 
+```{r}
+activity <- read_csv("./activity.zip", col_names = TRUE)
+```
 
 ## What is mean total number of steps taken per day?
 
+```{r}
+dailysteps <- activity %>% group_by(date) %>% summarize(steps = sum(steps))
+dailysteps
+```
+```{r}
+hist(dailysteps$steps, breaks = 10)
+```
 
+```{r}
+mean(dailysteps$steps, na.rm = T)
+median(dailysteps$steps, na.rm = T)
+```
 
 ## What is the average daily activity pattern?
 
+```{r}
+intsteps <- activity %>% group_by(interval) %>% summarise(mean_steps = mean(steps, na.rm = T))
+intsteps
+```
 
+```{r}
+with(intsteps, plot(interval, mean_steps, type = "l"))
+```
+
+```{r}
+intsteps$interval[which.max(intsteps$mean_steps)]
+```
 
 ## Imputing missing values
 
+How many rows in the data set have NAs?
 
+```{r}
+sum(is.na(activity))
+```
+
+Let's isolate those into a separate tibble and then join them with the tibble containing average steps by interval.
+
+```{r}
+actNA <- activity[is.na(activity$steps),]
+NAjoin <- left_join(actNA, intsteps)
+head(NAjoin)
+```
+
+Now let's assign the mean steps per interval to their corresponding NA values in a new data set.
+
+```{r}
+activitynoNA <- activity
+activitynoNA$steps[is.na(activitynoNA$steps)] <- NAjoin$mean_steps
+mean(is.na(activitynoNA$steps))
+head(activitynoNA)
+```
+
+```{r}
+dailystepsnoNA <- activitynoNA %>% group_by(date) %>% summarise(total_steps = sum(steps))
+head(dailystepsnoNA, n = 10)
+```
+
+Here's a histogram of the daily steps with the imputed NA values.
+
+```{r}
+hist(dailystepsnoNA$total_steps, breaks = 10)
+```
+
+Let's plot the daily steps with NAs and with NA values imputed side by side to see the difference.
+
+```{r}
+par(mfrow = c(1,2))
+hist(dailysteps$steps, breaks = 10, main = "Total Daily Steps w/ NAs", xlab = "Total Steps", ylim = c(0,25))
+hist(dailystepsnoNA$total_steps, breaks = 10, main = "Total Daily Steps, Imputed NAs", xlab = "Total Steps", ylim = c(0,25))
+```
+
+Now let's examine the means and medians of the imputed and original data sets.
+
+```{r}
+DailySum <- matrix(list("Imputed", "NAs", mean(dailystepsnoNA$total_steps), mean(dailysteps$steps, na.rm = T), median(dailystepsnoNA$total_steps), median(dailysteps$steps, na.rm = T)), 2, 3)
+colnames(DailySum) <- c("Cat", "Mean", "Median")
+DailySum
+```
+
+It seems that imputing the NA values from the mean by interval changed the median to equal the mean value, but had no effect on the mean.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+First let's create a new factor variable indicating whether the observation occurred on a weekday or weekend.
+
+```{r}
+activitynoNA <- activitynoNA %>% mutate(DayClass = as.factor(ifelse(wday(ymd(date)) %in% c(1,7), "weekend", "weekday"))) %>% select(steps, date, interval, DayClass)
+```
+
+Now let's create a summary with the mean steps, grouped by weekday/weekend and interval.
+
+```{r}
+wdayIntervalSum <- activitynoNA %>% group_by(DayClass, interval) %>% summarise(mean_steps = mean(steps))
+wdayIntervalSum
+```
+
+Now let's create a panel plot using the summary tibble and ggplot2.
+
+```{r}
+g <- ggplot(data = wdayIntervalSum, aes(interval, mean_steps))
+g + geom_line(color = "navy blue") + facet_grid(DayClass~.) + ylab("Average Steps") + ggtitle("Average steps per interval on weekdays & weekends") + theme_bw()
+```
